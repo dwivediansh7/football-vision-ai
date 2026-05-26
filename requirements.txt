@@ -2,3 +2,5 @@ ultralytics
 supervision
 opencv-python-headless
 streamlit
+imageio
+imageio-ffmpeg
