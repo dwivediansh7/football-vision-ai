@@ -4,8 +4,8 @@ import numpy as np
 from ultralytics import YOLO
 import supervision as sv
 import tempfile
-import os
-import subprocess
+import imageio
+import imageio.v2 as iio
 
 st.set_page_config(page_title="Football Vision AI", layout="wide")
 st.title("Football Vision AI")
@@ -27,9 +27,6 @@ if uploaded:
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    raw_path = tempfile.mktemp(suffix="_raw.avi")
-    out = cv2.VideoWriter(raw_path, cv2.VideoWriter_fourcc(*'XVID'), fps, (w, h))
-
     tracker = sv.ByteTrack()
     box_annotator = sv.BoxAnnotator()
     label_annotator = sv.LabelAnnotator()
@@ -38,6 +35,7 @@ if uploaded:
     frame_count = 0
     MAX_FRAMES = 150
     last_frame = None
+    annotated_frames = []
 
     progress = st.progress(0, "Processing video...")
 
@@ -63,20 +61,17 @@ if uploaded:
         annotated = box_annotator.annotate(frame.copy(), detections)
         annotated = label_annotator.annotate(annotated, detections, labels)
 
-        out.write(annotated)
+        annotated_frames.append(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB))
         frame_count += 1
         progress.progress(frame_count / MAX_FRAMES)
 
     cap.release()
-    out.release()
 
     final_path = tempfile.mktemp(suffix="_final.mp4")
-    subprocess.call([
-        "ffmpeg", "-y", "-i", raw_path,
-        "-vcodec", "libx264",
-        "-pix_fmt", "yuv420p",
-        final_path
-    ])
+    writer = imageio.get_writer(final_path, fps=fps, codec='libx264', pixelformat='yuv420p', macro_block_size=1)
+    for f in annotated_frames:
+        writer.append_data(f)
+    writer.close()
 
     heatmap_blur = cv2.GaussianBlur(heatmap, (51, 51), 0)
     if heatmap_blur.max() > 0:
