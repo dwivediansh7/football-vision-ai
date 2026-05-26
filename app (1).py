@@ -5,10 +5,11 @@ from ultralytics import YOLO
 import supervision as sv
 import tempfile
 import os
+import subprocess
 
-st.set_page_config(page_title="⚽ Football Analytics", layout="wide")
-st.title("⚽ Football Player Tracker + Heatmap")
-st.markdown("Upload a football clip → AI tracks every player + ball → generates movement heatmap")
+st.set_page_config(page_title="Football Vision AI", layout="wide")
+st.title("Football Vision AI")
+st.markdown("Upload a football clip to track players and generate movement heatmap.")
 
 @st.cache_resource
 def load_model():
@@ -26,8 +27,8 @@ if uploaded:
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    out_path = tempfile.mktemp(suffix="_out.mp4")
-    out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
+    raw_path = tempfile.mktemp(suffix="_raw.avi")
+    out = cv2.VideoWriter(raw_path, cv2.VideoWriter_fourcc(*'XVID'), fps, (w, h))
 
     tracker = sv.ByteTrack()
     box_annotator = sv.BoxAnnotator()
@@ -69,6 +70,14 @@ if uploaded:
     cap.release()
     out.release()
 
+    final_path = tempfile.mktemp(suffix="_final.mp4")
+    subprocess.call([
+        "ffmpeg", "-y", "-i", raw_path,
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+        final_path
+    ])
+
     heatmap_blur = cv2.GaussianBlur(heatmap, (51, 51), 0)
     if heatmap_blur.max() > 0:
         heatmap_norm = (heatmap_blur / heatmap_blur.max() * 255).astype(np.uint8)
@@ -82,15 +91,17 @@ if uploaded:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📹 Tracked Video")
-        st.video(out_path)
+        st.subheader("Tracked Video")
+        with open(final_path, "rb") as f:
+            st.video(f.read())
     with col2:
-        st.subheader("🔥 Movement Heatmap")
+        st.subheader("Movement Heatmap")
         st.image(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
 
-    st.subheader("📊 Stats")
+    st.subheader("Stats")
     total = len(set(
-        tid for dets in [detections]
-        for tid in (dets.tracker_id if dets.tracker_id is not None else [])
+        tid for tid in (detections.tracker_id if detections.tracker_id is not None else [])
     ))
     st.metric("Players Detected", total)
+    st.metric("Frames Processed", frame_count)
+
